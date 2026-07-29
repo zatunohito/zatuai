@@ -7,6 +7,32 @@ import {
   type DeepSeekTool,
 } from "../../../lib/deepseek";
 
+function toGoogleCalendarDate(iso: string): string | null {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function buildGoogleCalendarLink(
+  title: string,
+  startIso: string | undefined,
+  endIso: string | undefined,
+  details: string
+): string | null {
+  if (!startIso || !endIso) return null;
+  const start = toGoogleCalendarDate(startIso);
+  const end = toGoogleCalendarDate(endIso);
+  if (!start || !end) return null;
+
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${start}/${end}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 export async function POST(request: Request) {
   try {
     let body: { messages?: Array<{ role: "user" | "assistant"; content: string }> };
@@ -35,7 +61,7 @@ export async function POST(request: Request) {
     const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下のツールを利用して回答してください。
 - get_calendar_events: 指定された日付範囲のカレンダーイベントを取得します。
 - get_notion_status: Notionページのステータス内容を取得します。
-- notify_owner_of_schedule_request: 依頼者名、件名、日時、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。
+- notify_owner_of_schedule_request: 依頼者名、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
 - present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 
 ユーザーのメッセージが特定の日時の予約、確保、または時間枠のリクエストを表明している場合、以下の手順に従ってください。まず依頼者名、件名、日時、詳細を会話から収集してください。依頼者名、件名、日時、詳細のいずれかが不足または不明瞭な場合は、ユーザーに明確化の質問をしてください。これらの情報を合理的に収集できたら notify_owner_of_schedule_request ツールを呼び出してください。どうしても特定できないフィールドは依頼者名であれば「不明」、詳細であれば「詳細なし」として扱い、止めずに呼び出してください。URLは会話中に言及された場合のみ含めてください。このツールを呼び出した後、アシスタントはユーザーに対して「確認の通知を所有者に送信しました。所有者の返答があるまで予約は確定しません」と伝えてください。アシスタント自身はカレンダーイベントの承認や作成を行うことはできません。
@@ -97,6 +123,14 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
               datetime: {
                 type: "string",
                 description: "A human readable Japanese description of the requested date and time.",
+              },
+              startDateTime: {
+                type: "string",
+                description: "The requested start date and time resolved to an absolute ISO 8601 string, for example 2026-08-10T15:00:00+09:00. Resolve relative expressions like tomorrow or next Monday using the current date and time provided in the system prompt. Omit this property entirely if a specific start time truly cannot be determined.",
+              },
+              endDateTime: {
+                type: "string",
+                description: "The requested end date and time resolved to an absolute ISO 8601 string, in the same way as startDateTime. Omit this property entirely if a specific end time truly cannot be determined.",
               },
               details: {
                 type: "string",
@@ -199,6 +233,15 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
           ];
           if (args.url) {
             lines.push(`URL: ${args.url}`);
+          }
+          const calendarLink = buildGoogleCalendarLink(
+            args.eventTitle,
+            args.startDateTime,
+            args.endDateTime,
+            args.details
+          );
+          if (calendarLink) {
+            lines.push(`カレンダーに追加: ${calendarLink}`);
           }
           const formattedMessage = lines.join("\n");
           await sendDiscordDm(formattedMessage);

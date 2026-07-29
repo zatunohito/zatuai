@@ -145,9 +145,30 @@ export default function Home() {
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
-  }, [entries])
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [entries, scrollToBottom])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const handleResize = () => {
+      window.scrollTo(0, 0)
+      scrollToBottom()
+    }
+
+    viewport.addEventListener('resize', handleResize)
+    return () => viewport.removeEventListener('resize', handleResize)
+  }, [scrollToBottom])
+
+  function handleTextareaFocus() {
+    window.setTimeout(scrollToBottom, 300)
+  }
 
   const trimmed = input.trim()
 
@@ -471,6 +492,7 @@ export default function Home() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={handleTextareaFocus}
           placeholder="メッセージを入力..."
           rows={1}
           className="max-h-[200px] flex-1 resize-none bg-transparent py-2 text-sm text-zinc-800 placeholder-zinc-400 outline-none dark:text-slate-100 dark:placeholder-slate-500"

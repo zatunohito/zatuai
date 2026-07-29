@@ -18,6 +18,10 @@ interface CalendarEvent {
 
 const IGNORED_SUMMARIES = new Set(["長期開発プロジェクト", "長期開発 定例会"]);
 
+const PUBLIC_MARKER_RE = /\(公開\)|（公開）/;
+
+const MASKED_SUMMARY = "予定あり";
+
 async function getAccessToken(): Promise<string> {
   const body = new URLSearchParams();
   body.append("client_id", process.env.GOOGLE_CLIENT_ID ?? "");
@@ -66,9 +70,19 @@ export async function getCalendarEvents(start: string, end: string): Promise<Cal
 
   return items
     .filter((item) => !IGNORED_SUMMARIES.has(item.summary ?? ""))
-    .map((item) => ({
-      summary: item.summary ?? "",
-      start: item.start?.dateTime ?? item.start?.date ?? "",
-      end: item.end?.dateTime ?? item.end?.date ?? "",
-    }));
+    .map((item) => {
+      const raw = item.summary ?? "";
+      if (PUBLIC_MARKER_RE.test(raw)) {
+        return {
+          summary: raw.replace(PUBLIC_MARKER_RE, "").trim(),
+          start: item.start?.dateTime ?? item.start?.date ?? "",
+          end: item.end?.dateTime ?? item.end?.date ?? "",
+        };
+      }
+      return {
+        summary: MASKED_SUMMARY,
+        start: item.start?.dateTime ?? item.start?.date ?? "",
+        end: item.end?.dateTime ?? item.end?.date ?? "",
+      };
+    });
 }

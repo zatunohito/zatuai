@@ -44,13 +44,21 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+function toRfc3339(value: string, label: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid ${label} date: ${value}`);
+  }
+  return parsed.toISOString();
+}
+
 export async function getCalendarEvents(start: string, end: string): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
   const calendarId = process.env.GOOGLE_CALENDAR_ID ?? "primary";
 
   const params = new URLSearchParams();
-  params.append("timeMin", start);
-  params.append("timeMax", end);
+  params.append("timeMin", toRfc3339(start, "start"));
+  params.append("timeMax", toRfc3339(end, "end"));
   params.append("singleEvents", "true");
   params.append("orderBy", "startTime");
 

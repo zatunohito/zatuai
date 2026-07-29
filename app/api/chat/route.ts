@@ -32,12 +32,15 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
 
-    const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下の3つのツールを利用して回答してください。
+    const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下のツールを利用して回答してください。
 - get_calendar_events: 指定された日付範囲のカレンダーイベントを取得します。
 - get_notion_status: Notionページのステータス内容を取得します。
 - notify_owner_of_schedule_request: 依頼者名、件名、日時、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。
+- present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 
 ユーザーのメッセージが特定の日時の予約、確保、または時間枠のリクエストを表明している場合、以下の手順に従ってください。まず依頼者名、件名、日時、詳細を会話から収集してください。依頼者名、件名、日時、詳細のいずれかが不足または不明瞭な場合は、ユーザーに明確化の質問をしてください。これらの情報を合理的に収集できたら notify_owner_of_schedule_request ツールを呼び出してください。どうしても特定できないフィールドは依頼者名であれば「不明」、詳細であれば「詳細なし」として扱い、止めずに呼び出してください。URLは会話中に言及された場合のみ含めてください。このツールを呼び出した後、アシスタントはユーザーに対して「確認の通知を所有者に送信しました。所有者の返答があるまで予約は確定しません」と伝えてください。アシスタント自身はカレンダーイベントの承認や作成を行うことはできません。
+
+get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（Notionの状況説明や雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
 
 現在の日時: ${nowIso}`;
 
@@ -108,6 +111,49 @@ export async function POST(request: Request) {
           },
         },
       },
+      {
+        type: "function",
+        function: {
+          name: "present_calendar_events",
+          description: "Presents a structured list of specific calendar events to the user as cards, instead of describing them in free text.",
+          parameters: {
+            type: "object",
+            properties: {
+              summary: {
+                type: "string",
+                description: "A short conversational Japanese comment introducing the event list.",
+              },
+              events: {
+                type: "array",
+                description: "The list of calendar events to present as cards.",
+                items: {
+                  type: "object",
+                  properties: {
+                    day: {
+                      type: "string",
+                      description: "A short day label, such as a single weekday character or a date, for example 水 or 7/30.",
+                    },
+                    time: {
+                      type: "string",
+                      description: "A short human readable time label, such as 15:30 or 16:00〜18:00.",
+                    },
+                    title: {
+                      type: "string",
+                      description: "The event title.",
+                    },
+                    category: {
+                      type: "string",
+                      description: "A short Japanese category tag inferred from the event, such as 勉強, 部活, 自習, 外出, 通院, 会議, or 予定.",
+                    },
+                  },
+                  required: ["day", "time", "title", "category"],
+                },
+              },
+            },
+            required: ["summary", "events"],
+          },
+        },
+      },
     ];
 
     const messages: DeepSeekMessage[] = [
@@ -121,6 +167,8 @@ export async function POST(request: Request) {
       tools,
     });
     let assistantMessage = initialResponse.choices[0].message;
+    let finalAnswer: string | null = null;
+    let finalEvents: unknown[] | undefined;
 
     for (let i = 0; i < 5; i++) {
       if (
@@ -131,6 +179,7 @@ export async function POST(request: Request) {
       }
 
       messages.push(assistantMessage);
+      let presented = false;
 
       for (const toolCall of assistantMessage.tool_calls) {
         const args = JSON.parse(toolCall.function.arguments);
@@ -154,6 +203,11 @@ export async function POST(request: Request) {
           const formattedMessage = lines.join("\n");
           await sendDiscordDm(formattedMessage);
           result = { notified: true };
+        } else if (toolCall.function.name === "present_calendar_events") {
+          finalAnswer = args.summary;
+          finalEvents = args.events;
+          presented = true;
+          result = { presented: true };
         } else {
           result = { error: `Unknown tool: ${toolCall.function.name}` };
         }
@@ -165,6 +219,8 @@ export async function POST(request: Request) {
         });
       }
 
+      if (presented) break;
+
       const nextResponse = await deepseekChatCompletion({
         model: "deepseek-chat",
         messages,
@@ -174,7 +230,10 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { answer: assistantMessage.content ?? "" },
+      {
+        answer: finalAnswer ?? assistantMessage.content ?? "",
+        ...(finalEvents ? { events: finalEvents } : {}),
+      },
       { status: 200 }
     );
   } catch (error) {

@@ -493,7 +493,7 @@ export default function Home() {
   if (entries.length === 0) {
     return (
       <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-slate-950">
-        <header className="flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
+        <header className="sticky top-0 z-50 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
             <h1 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
               今週の予定について
@@ -506,30 +506,7 @@ export default function Home() {
         </header>
 
         <div className="flex flex-1 items-center justify-center px-4">
-          <div className="w-full max-w-xl">
-            <div className="mb-6 flex flex-col items-center text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-zinc-400 dark:text-zinc-500"
-                >
-                  <path d="M12 8v4l3 3" />
-                  <circle cx="12" cy="12" r="10" />
-                </svg>
-              </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                メッセージを送信してください
-              </p>
-            </div>
-            {composer}
-          </div>
+          <div className="w-full max-w-xl">{composer}</div>
         </div>
       </div>
     )
@@ -537,7 +514,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-slate-950">
-      <header className="flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
+      <header className="sticky top-0 z-50 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
           <h1 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
             今週の予定について

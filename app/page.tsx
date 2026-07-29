@@ -1,65 +1,126 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from 'react'
+
+type Role = 'user' | 'assistant'
+
+interface ChatEntry {
+  role: Role
+  text: string
+}
 
 export default function Home() {
+  const [input, setInput] = useState('')
+  const [entries, setEntries] = useState<ChatEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
+  }, [entries])
+
+  const trimmed = input.trim()
+
+  async function send() {
+    if (loading || trimmed.length === 0) return
+
+    const message = trimmed
+    setEntries((prev) => [...prev, { role: 'user', text: message }])
+    setInput('')
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+      const data = await res.json()
+
+      if (res.ok) {
+        setEntries((prev) => [...prev, { role: 'assistant', text: data.answer }])
+      } else {
+        setEntries((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: `エラーが発生しました${data.error ? `: ${data.error}` : ''}`,
+          },
+        ])
+      }
+    } catch {
+      setEntries((prev) => [
+        ...prev,
+        { role: 'assistant', text: 'エラーが発生しました' },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    send()
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-6">
+        <div
+          ref={listRef}
+          className="flex-1 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          {entries.length === 0 && (
+            <p className="text-center text-sm text-zinc-400 dark:text-zinc-500">
+              メッセージを送信してください
+            </p>
+          )}
+          {entries.map((entry, i) => (
+            <div key={i} className="mb-4">
+              <span
+                className={
+                  entry.role === 'user'
+                    ? 'text-xs font-semibold text-blue-600 dark:text-blue-400'
+                    : 'text-xs font-semibold text-emerald-600 dark:text-emerald-400'
+                }
+              >
+                {entry.role === 'user' ? 'You' : 'Assistant'}
+              </span>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">
+                {entry.text}
+              </p>
+            </div>
+          ))}
+          {loading && (
+            <p className="text-sm text-zinc-400 dark:text-zinc-500">思考中...</p>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="メッセージを入力..."
+            rows={2}
+            className="flex-1 resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:placeholder-zinc-500 dark:focus:border-zinc-500"
+          />
+          <button
+            type="submit"
+            disabled={loading || trimmed.length === 0}
+            className="self-end rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-black dark:hover:bg-zinc-300"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            送信
+          </button>
+        </form>
+      </div>
     </div>
-  );
+  )
 }

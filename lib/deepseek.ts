@@ -28,6 +28,7 @@ export async function deepseekChatCompletion(params: {
   tools?: DeepSeekTool[];
   temperature?: number;
   max_tokens?: number;
+  reasoningEffort?: "high" | "max";
 }) {
   if (!API_KEY) {
     throw new Error("DEEPSEEK_API_KEY is not set");
@@ -45,6 +46,9 @@ export async function deepseekChatCompletion(params: {
       tools: params.tools,
       temperature: params.temperature,
       max_tokens: params.max_tokens,
+      ...(params.reasoningEffort
+        ? { reasoning_effort: params.reasoningEffort, thinking: { type: "enabled" } }
+        : {}),
     }),
   });
 

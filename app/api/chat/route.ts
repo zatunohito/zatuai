@@ -257,7 +257,8 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
     ];
 
     const initialResponse = await deepseekChatCompletion({
-      model: "deepseek-chat",
+      model: "deepseek-v4-flash",
+      reasoningEffort: "max",
       messages,
       tools,
     });
@@ -342,7 +343,8 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
       if (presented) break;
 
       const nextResponse = await deepseekChatCompletion({
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
+        reasoningEffort: "max",
         messages,
         tools,
       });

@@ -22,7 +22,7 @@ interface ChatEntry {
   choices?: string[]
 }
 
-type Panel = 'none' | 'time' | 'form' | 'effort'
+type Panel = 'none' | 'time' | 'form'
 
 const QUICK_REPLIES = ['今週は?', '明日は?', 'このあと空いてる?']
 
@@ -366,6 +366,79 @@ export default function Home() {
     setPanel('none')
   }
 
+  const effortPanelBig = (
+    <div className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mb-4 text-sm text-zinc-700 dark:text-slate-200">
+        エフォート <span className="font-semibold">{EFFORT_LEVELS[effortIndex].label}</span>
+      </div>
+      <div className="relative flex h-5 items-center">
+        <div className="pointer-events-none absolute inset-x-0 h-1.5 rounded-full bg-zinc-200 dark:bg-slate-700" />
+        <div
+          className="pointer-events-none absolute h-1.5 rounded-full bg-gradient-to-r from-violet-300 to-violet-600 transition-all duration-200"
+          style={{ width: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+        />
+        <div className="pointer-events-none absolute inset-x-0 flex justify-between px-0.5">
+          {EFFORT_LEVELS.map((level, levelIndex) => (
+            <span
+              key={level.value}
+              className={`h-1.5 w-1.5 rounded-full ${
+                levelIndex <= effortIndex ? 'bg-violet-200' : 'bg-zinc-400 dark:bg-slate-500'
+              }`}
+            />
+          ))}
+        </div>
+        <div
+          className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 rounded-full bg-white shadow ring-1 ring-zinc-300 transition-all duration-200 dark:ring-slate-500"
+          style={{ left: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={EFFORT_LEVELS.length - 1}
+          step={1}
+          value={effortIndex}
+          onChange={(e) => handleEffortChange(Number(e.target.value))}
+          aria-label="エフォート"
+          className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-transparent"
+        />
+      </div>
+      <div className="mt-2 flex justify-between text-xs text-zinc-400 dark:text-slate-500">
+        <span>高速</span>
+        <span>高精度</span>
+      </div>
+    </div>
+  )
+
+  const effortBarSmall = (
+    <div className="mt-2 flex items-center gap-2">
+      <span className="flex-shrink-0 text-xs text-zinc-400 dark:text-slate-500">エフォート</span>
+      <div className="relative flex h-3 flex-1 items-center">
+        <div className="pointer-events-none absolute inset-x-0 h-1 rounded-full bg-zinc-200 dark:bg-slate-700" />
+        <div
+          className="pointer-events-none absolute h-1 rounded-full bg-gradient-to-r from-violet-300 to-violet-600 transition-all duration-200"
+          style={{ width: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+        />
+        <div
+          className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-white shadow ring-1 ring-zinc-300 transition-all duration-200 dark:ring-slate-500"
+          style={{ left: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={EFFORT_LEVELS.length - 1}
+          step={1}
+          value={effortIndex}
+          onChange={(e) => handleEffortChange(Number(e.target.value))}
+          aria-label="エフォート"
+          className="relative z-10 h-3 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-transparent"
+        />
+      </div>
+      <span className="w-8 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-slate-500">
+        {EFFORT_LEVELS[effortIndex].label}
+      </span>
+    </div>
+  )
+
   const composer = (
     <>
       {panel === 'none' && (
@@ -381,48 +454,6 @@ export default function Home() {
               {reply}
             </button>
           ))}
-        </div>
-      )}
-
-      {panel === 'effort' && (
-        <div className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-4 text-sm text-zinc-700 dark:text-slate-200">
-            エフォート <span className="font-semibold">{EFFORT_LEVELS[effortIndex].label}</span>
-          </div>
-          <div className="relative flex h-5 items-center">
-            <div className="pointer-events-none absolute inset-x-0 h-1.5 rounded-full bg-zinc-200 dark:bg-slate-700" />
-            <div
-              className="pointer-events-none absolute h-1.5 rounded-full bg-gradient-to-r from-violet-300 to-violet-600 transition-all duration-200"
-              style={{ width: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
-            />
-            <div className="pointer-events-none absolute inset-x-0 flex justify-between px-0.5">
-              {EFFORT_LEVELS.map((level, levelIndex) => (
-                <span
-                  key={level.value}
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    levelIndex <= effortIndex ? 'bg-violet-200' : 'bg-zinc-400 dark:bg-slate-500'
-                  }`}
-                />
-              ))}
-            </div>
-            <div
-              className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 rounded-full bg-white shadow ring-1 ring-zinc-300 transition-all duration-200 dark:ring-slate-500"
-              style={{ left: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
-            />
-            <input
-              type="range"
-              min={0}
-              max={EFFORT_LEVELS.length - 1}
-              step={1}
-              value={effortIndex}
-              onChange={(e) => handleEffortChange(Number(e.target.value))}
-              className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-transparent"
-            />
-          </div>
-          <div className="mt-2 flex justify-between text-xs text-zinc-400 dark:text-slate-500">
-            <span>高速</span>
-            <span>高精度</span>
-          </div>
         </div>
       )}
 
@@ -598,13 +629,6 @@ export default function Home() {
               >
                 予約フォーム
               </button>
-              <button
-                type="button"
-                onClick={() => togglePanel('effort')}
-                className="px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-100 dark:text-slate-200 dark:hover:bg-slate-700"
-              >
-                エフォート
-              </button>
             </div>
           )}
         </div>
@@ -654,7 +678,10 @@ export default function Home() {
         </header>
 
         <div className="flex flex-1 items-center justify-center px-4">
-          <div className="w-full max-w-xl">{composer}</div>
+          <div className="w-full max-w-xl">
+            {effortPanelBig}
+            {composer}
+          </div>
         </div>
       </div>
     )
@@ -778,6 +805,7 @@ export default function Home() {
       <div className="flex-shrink-0 border-t border-zinc-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950 sm:px-4 sm:py-4">
         <div className="mx-auto w-full max-w-3xl">
           {composer}
+          {effortBarSmall}
         </div>
       </div>
     </div>

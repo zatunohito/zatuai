@@ -1,11 +1,21 @@
 import { getCalendarEvents } from "../../../lib/tools/calendar";
-import { getNotionStatus } from "../../../lib/tools/notion";
 import { sendDiscordDm } from "../../../lib/tools/discord";
 import {
   deepseekChatCompletion,
   type DeepSeekMessage,
   type DeepSeekTool,
 } from "../../../lib/deepseek";
+import { checkChatRateLimit, checkNotifyRateLimit } from "../../../lib/rateLimit";
+
+const MAX_MESSAGES = 40;
+const MAX_MESSAGE_LENGTH = 4000;
+const MAX_FIELD_LENGTH = 500;
+const MAX_NOTIFICATIONS_PER_REQUEST = 3;
+
+function truncate(value: unknown, maxLength: number): string {
+  const s = typeof value === "string" ? value : String(value ?? "");
+  return s.length > maxLength ? s.slice(0, maxLength) : s;
+}
 
 function toGoogleCalendarDate(iso: string): string | null {
   const parsed = new Date(iso);
@@ -35,8 +45,12 @@ function buildGoogleCalendarLink(
 
 export async function POST(request: Request) {
   try {
+    if (!checkChatRateLimit(request)) {
+      return Response.json({ error: "リクエストが多すぎます。しばらくしてから再度お試しください。" }, { status: 429 });
+    }
+
     let body: {
-      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+      messages?: Array<{ role: string; content: string }>;
       effort?: string;
     };
     try {
@@ -45,27 +59,41 @@ export async function POST(request: Request) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
     const { messages: incomingMessages } = body;
-    const reasoningEffort: "high" | "max" | undefined =
-      body.effort === "high" || body.effort === "max" ? body.effort : undefined;
+    // The reasoning effort is a cost lever; the public endpoint always uses the
+    // server default regardless of what the client requests.
+    const reasoningEffort: "high" | "max" | undefined = undefined;
     if (
       !incomingMessages ||
       !Array.isArray(incomingMessages) ||
       incomingMessages.length === 0 ||
+      incomingMessages.length > MAX_MESSAGES ||
       incomingMessages[incomingMessages.length - 1].role !== "user" ||
       typeof incomingMessages[incomingMessages.length - 1].content !== "string" ||
-      incomingMessages[incomingMessages.length - 1].content.trim() === ""
+      incomingMessages[incomingMessages.length - 1].content.trim() === "" ||
+      // Only user/assistant turns are accepted from the client; system/tool
+      // roles must never be spoofable to influence the model's instructions.
+      incomingMessages.some(
+        (m) =>
+          (m.role !== "user" && m.role !== "assistant") ||
+          typeof m.content !== "string" ||
+          m.content.length > MAX_MESSAGE_LENGTH
+      )
     ) {
       return Response.json(
-        { error: "messages must be a non-empty array whose last entry is a user message with non-empty content" },
+        { error: "messages must be a non-empty array of user/assistant messages with non-empty content" },
         { status: 400 }
       );
     }
+    const sanitizedMessages: Array<{ role: "user" | "assistant"; content: string }> =
+      incomingMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
     const nowIso = new Date().toISOString();
 
     const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下のツールを利用して回答してください。
 - get_calendar_events: 指定された日付範囲のカレンダーイベントを取得します。
-- get_notion_status: Notionページのステータス内容を取得します。
 - notify_owner_of_schedule_request: 依頼者名、連絡先、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
 - present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 - notify_owner_of_inquiry: 予約や時間枠のリクエストではない、一般的な質問や問い合わせを所有者宛てに正確にまとめ、返信先メールアドレスとともにDiscord経由で通知します。
@@ -79,7 +107,7 @@ export async function POST(request: Request) {
 
 ユーザーに質問をする際、想定される答えが少数（2〜5個程度）で明確に列挙できる場合は、自由文で尋ねる代わりに present_choices ツールを必ず呼び出して、質問文と選択肢のボタンを提示してください。例えば、はい・いいえで答えられる質問、オンラインか対面かのような二択、既知の少数の選択肢から選んでもらう質問、そしてユーザーの用件が予約リクエストなのか一般的な問い合わせなのか雑談なのか判断がつかない場合の切り分け質問（例えば選択肢を予約のリクエスト、一般的な質問や問い合わせ、その他とする）などが該当します。用件の種類を尋ねる場面では、絶対に自由文で聞かず必ずこのツールを使ってください。選択肢は簡潔な日本語のラベルにしてください。答えが自由記述でなければ答えられないもの（名前、日時、詳細な文章など）には使わないでください。
 
-get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（Notionの状況説明や雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
+get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
 
 現在の日時: ${nowIso}`;
 
@@ -102,18 +130,6 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
               },
             },
             required: ["start", "end"],
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_notion_status",
-          description: "Fetches the status content of a fixed Notion page.",
-          parameters: {
-            type: "object",
-            properties: {},
-            required: [],
           },
         },
       },
@@ -258,7 +274,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
 
     const messages: DeepSeekMessage[] = [
       { role: "system", content: systemPrompt },
-      ...incomingMessages.map((m) => ({ role: m.role, content: m.content })),
+      ...sanitizedMessages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
     const initialResponse = await deepseekChatCompletion({
@@ -271,6 +287,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
     let finalAnswer: string | null = null;
     let finalEvents: unknown[] | undefined;
     let finalChoices: unknown[] | undefined;
+    let notificationsSent = 0;
 
     for (let i = 0; i < 5; i++) {
       if (
@@ -289,41 +306,49 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
 
         if (toolCall.function.name === "get_calendar_events") {
           result = await getCalendarEvents(args.start, args.end);
-        } else if (toolCall.function.name === "get_notion_status") {
-          result = await getNotionStatus();
         } else if (toolCall.function.name === "notify_owner_of_schedule_request") {
-          const lines = [
-            "新しい予約リクエスト",
-            `依頼者: ${args.requesterName}`,
-            `連絡先: ${args.contact}`,
-            `件名: ${args.eventTitle}`,
-            `日時: ${args.datetime}`,
-            `詳細: ${args.details}`,
-          ];
-          if (args.url) {
-            lines.push(`URL: ${args.url}`);
+          if (notificationsSent >= MAX_NOTIFICATIONS_PER_REQUEST || !checkNotifyRateLimit(request)) {
+            result = { error: "notification limit reached" };
+          } else {
+            const lines = [
+              "新しい予約リクエスト",
+              `依頼者: ${truncate(args.requesterName, MAX_FIELD_LENGTH)}`,
+              `連絡先: ${truncate(args.contact, MAX_FIELD_LENGTH)}`,
+              `件名: ${truncate(args.eventTitle, MAX_FIELD_LENGTH)}`,
+              `日時: ${truncate(args.datetime, MAX_FIELD_LENGTH)}`,
+              `詳細: ${truncate(args.details, MAX_FIELD_LENGTH)}`,
+            ];
+            if (args.url) {
+              lines.push(`URL: ${truncate(args.url, MAX_FIELD_LENGTH)}`);
+            }
+            const calendarLink = buildGoogleCalendarLink(
+              args.eventTitle,
+              args.startDateTime,
+              args.endDateTime,
+              args.details
+            );
+            if (calendarLink) {
+              lines.push(`カレンダーに追加: ${calendarLink}`);
+            }
+            const formattedMessage = lines.join("\n");
+            await sendDiscordDm(formattedMessage);
+            notificationsSent += 1;
+            result = { notified: true };
           }
-          const calendarLink = buildGoogleCalendarLink(
-            args.eventTitle,
-            args.startDateTime,
-            args.endDateTime,
-            args.details
-          );
-          if (calendarLink) {
-            lines.push(`カレンダーに追加: ${calendarLink}`);
-          }
-          const formattedMessage = lines.join("\n");
-          await sendDiscordDm(formattedMessage);
-          result = { notified: true };
         } else if (toolCall.function.name === "notify_owner_of_inquiry") {
-          const inquiryMessage = [
-            "新しい問い合わせ",
-            `問い合わせ者: ${args.inquirerName}`,
-            `質問内容: ${args.question}`,
-            `返信先メール: ${args.replyEmail}`,
-          ].join("\n");
-          await sendDiscordDm(inquiryMessage);
-          result = { notified: true };
+          if (notificationsSent >= MAX_NOTIFICATIONS_PER_REQUEST || !checkNotifyRateLimit(request)) {
+            result = { error: "notification limit reached" };
+          } else {
+            const inquiryMessage = [
+              "新しい問い合わせ",
+              `問い合わせ者: ${truncate(args.inquirerName, MAX_FIELD_LENGTH)}`,
+              `質問内容: ${truncate(args.question, MAX_FIELD_LENGTH)}`,
+              `返信先メール: ${truncate(args.replyEmail, MAX_FIELD_LENGTH)}`,
+            ].join("\n");
+            await sendDiscordDm(inquiryMessage);
+            notificationsSent += 1;
+            result = { notified: true };
+          }
         } else if (toolCall.function.name === "present_calendar_events") {
           finalAnswer = args.summary;
           finalEvents = args.events;
@@ -366,8 +391,6 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
     );
   } catch (error) {
     console.error(error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    return Response.json({ error: errorMessage }, { status: 500 });
+    return Response.json({ error: "内部エラーが発生しました" }, { status: 500 });
   }
 }

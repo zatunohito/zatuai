@@ -54,7 +54,8 @@ export async function deepseekChatCompletion(params: {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`DeepSeek API error ${res.status}: ${text}`);
+    console.error(`DeepSeek API error ${res.status}: ${text}`);
+    throw new Error("DeepSeek API error");
   }
 
   return res.json() as Promise<{

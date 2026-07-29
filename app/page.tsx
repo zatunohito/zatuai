@@ -19,6 +19,7 @@ interface ChatEntry {
   text: string
   timestamp: string
   events?: EventCard[]
+  choices?: string[]
 }
 
 type Panel = 'none' | 'time' | 'form'
@@ -216,6 +217,7 @@ export default function Home() {
             text: data.answer,
             timestamp: new Date().toISOString(),
             events: Array.isArray(data.events) ? data.events : undefined,
+            choices: Array.isArray(data.choices) ? data.choices : undefined,
           },
         ])
       } else {
@@ -656,6 +658,21 @@ export default function Home() {
                                 {ev.category}
                               </span>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                      {entry.choices && entry.choices.length > 0 && i === entries.length - 1 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {entry.choices.map((choice, choiceIndex) => (
+                            <button
+                              key={choiceIndex}
+                              type="button"
+                              onClick={() => sendMessage(choice)}
+                              disabled={loading}
+                              className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                              {choice}
+                            </button>
                           ))}
                         </div>
                       )}

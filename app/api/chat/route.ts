@@ -64,12 +64,15 @@ export async function POST(request: Request) {
 - notify_owner_of_schedule_request: 依頼者名、連絡先、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
 - present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 - notify_owner_of_inquiry: 予約や時間枠のリクエストではない、一般的な質問や問い合わせを所有者宛てに正確にまとめ、返信先メールアドレスとともにDiscord経由で通知します。
+- present_choices: 選択肢が少数かつ明確な質問をユーザーにする場合に、自由文で尋ねる代わりにボタン形式の選択肢を提示します。
 
 このカレンダーの所有者は次のいずれかの名前で呼ばれることがあります: zatunohito, 大畠朔翔, おおはたさくと, zatu。これらはすべて同じ人物、つまりカレンダー所有者本人を指します。ユーザーがこれらの名前のいずれかで自己紹介した場合は、依頼者が所有者本人であると理解してください。
 
 ユーザーのメッセージが特定の日時の予約、確保、または時間枠のリクエストを表明している場合、以下の手順に従ってください。まず依頼者名、連絡先（メールアドレス、電話番号、メッセージアプリのIDなど、所有者が返信できる手段）、件名、日時、詳細を会話から収集してください。件名や詳細の内容から、会議、ミーティング、MTG、打ち合わせなど、オンライン会議であることが推測される場合は、会議のURL（ZoomやGoogle Meetのリンクなど）がまだ会話に出ていなければ、他の不足情報と同様にユーザーに尋ねてください。依頼者名、連絡先、件名、日時、詳細のいずれかが不足または不明瞭な場合は、ユーザーに明確化の質問をしてください。これらの情報を合理的に収集できたら notify_owner_of_schedule_request ツールを呼び出してください。どうしても特定できないフィールドは依頼者名や連絡先であれば「不明」、詳細であれば「詳細なし」として扱い、止めずに呼び出してください。URLは会話中に言及された場合のみ含めてください。このツールを呼び出した後、アシスタントはユーザーに対して「確認の通知を所有者に送信しました。所有者の返答があるまで予約は確定しません」と伝えてください。アシスタント自身はカレンダーイベントの承認や作成を行うことはできません。
 
 ユーザーのメッセージが予約や時間枠のリクエストではなく、所有者への一般的な質問や問い合わせである場合は、以下の手順に従ってください。まずユーザーの発言内容を正確に読み取り、質問や問い合わせの内容を簡潔かつ正確な日本語で要約してください。次に、所有者が返信できるメールアドレスがまだ会話に出ていなければ、ユーザーに尋ねてください。問い合わせ内容とメールアドレスの両方が揃ったら notify_owner_of_inquiry ツールを呼び出してください。問い合わせ者の名前が分かればそれも含め、分からない場合は「不明」としてください。このツールを呼び出した後、アシスタントはユーザーに対して「問い合わせを所有者に送信しました。返信をお待ちください」と伝えてください。
+
+ユーザーに質問をする際、想定される答えが少数（2〜5個程度）で明確に列挙できる場合は、自由文で尋ねる代わりに present_choices ツールを呼び出して、質問文と選択肢のボタンを提示してください。例えば、はい・いいえで答えられる質問、オンラインか対面かのような二択、あるいは既知の少数の選択肢から選んでもらう質問などが該当します。選択肢は簡潔な日本語のラベルにしてください。答えが自由記述でなければ答えられないもの（名前、日時、詳細な文章など）には使わないでください。
 
 get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（Notionの状況説明や雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
 
@@ -182,6 +185,30 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
       {
         type: "function",
         function: {
+          name: "present_choices",
+          description: "Presents the user with a short question and a small set of clickable option buttons, instead of asking a free text question, for questions with a limited well defined set of likely answers.",
+          parameters: {
+            type: "object",
+            properties: {
+              message: {
+                type: "string",
+                description: "The question or prompt text to show to the user.",
+              },
+              options: {
+                type: "array",
+                description: "Two to five short Japanese option labels for the user to choose from.",
+                items: {
+                  type: "string",
+                },
+              },
+            },
+            required: ["message", "options"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
           name: "present_calendar_events",
           description: "Presents a structured list of specific calendar events to the user as cards, instead of describing them in free text.",
           parameters: {
@@ -237,6 +264,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
     let assistantMessage = initialResponse.choices[0].message;
     let finalAnswer: string | null = null;
     let finalEvents: unknown[] | undefined;
+    let finalChoices: unknown[] | undefined;
 
     for (let i = 0; i < 5; i++) {
       if (
@@ -295,6 +323,11 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
           finalEvents = args.events;
           presented = true;
           result = { presented: true };
+        } else if (toolCall.function.name === "present_choices") {
+          finalAnswer = args.message;
+          finalChoices = args.options;
+          presented = true;
+          result = { presented: true };
         } else {
           result = { error: `Unknown tool: ${toolCall.function.name}` };
         }
@@ -320,6 +353,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
       {
         answer: finalAnswer ?? assistantMessage.content ?? "",
         ...(finalEvents ? { events: finalEvents } : {}),
+        ...(finalChoices ? { choices: finalChoices } : {}),
       },
       { status: 200 }
     );

@@ -136,6 +136,7 @@ export default function Home() {
   const [pickerStart, setPickerStart] = useState('')
   const [pickerEnd, setPickerEnd] = useState('')
   const [formName, setFormName] = useState('')
+  const [formContact, setFormContact] = useState('')
   const [formTitle, setFormTitle] = useState('')
   const [formDetails, setFormDetails] = useState('')
   const [formUrl, setFormUrl] = useState('')
@@ -313,6 +314,7 @@ export default function Home() {
 
   function cancelForm() {
     setFormName('')
+    setFormContact('')
     setFormTitle('')
     setFormDetails('')
     setFormUrl('')
@@ -320,9 +322,9 @@ export default function Home() {
   }
 
   function submitForm() {
-    if (formName.trim().length === 0 || formTitle.trim().length === 0) return
+    if (formName.trim().length === 0 || formContact.trim().length === 0 || formTitle.trim().length === 0) return
 
-    const lines = [`依頼者: ${formName}`, `件名: ${formTitle}`]
+    const lines = [`依頼者: ${formName}`, `連絡先: ${formContact}`, `件名: ${formTitle}`]
     const datetimePhrase = buildDateTimePhrase(formDate, formStart, formEnd)
     if (datetimePhrase) lines.push(`日時: ${datetimePhrase}`)
     lines.push(`詳細: ${formDetails.trim() ? formDetails : '詳細なし'}`)
@@ -331,6 +333,7 @@ export default function Home() {
     sendMessage(lines.join('\n'))
 
     setFormName('')
+    setFormContact('')
     setFormTitle('')
     setFormDetails('')
     setFormUrl('')
@@ -421,6 +424,16 @@ export default function Home() {
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-slate-400">
+            連絡先（メール・電話番号など）
+            <input
+              type="text"
+              required
+              value={formContact}
+              onChange={(e) => setFormContact(e.target.value)}
+              className="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-800 outline-none focus:border-zinc-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-slate-400">
             件名
             <input
               type="text"
@@ -475,7 +488,7 @@ export default function Home() {
             <button
               type="button"
               onClick={submitForm}
-              disabled={formName.trim().length === 0 || formTitle.trim().length === 0}
+              disabled={formName.trim().length === 0 || formContact.trim().length === 0 || formTitle.trim().length === 0}
               className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
               送信

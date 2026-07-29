@@ -61,12 +61,12 @@ export async function POST(request: Request) {
     const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下のツールを利用して回答してください。
 - get_calendar_events: 指定された日付範囲のカレンダーイベントを取得します。
 - get_notion_status: Notionページのステータス内容を取得します。
-- notify_owner_of_schedule_request: 依頼者名、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
+- notify_owner_of_schedule_request: 依頼者名、連絡先、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
 - present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 
 このカレンダーの所有者は次のいずれかの名前で呼ばれることがあります: zatunohito, 大畠朔翔, おおはたさくと, zatu。これらはすべて同じ人物、つまりカレンダー所有者本人を指します。ユーザーがこれらの名前のいずれかで自己紹介した場合は、依頼者が所有者本人であると理解してください。
 
-ユーザーのメッセージが特定の日時の予約、確保、または時間枠のリクエストを表明している場合、以下の手順に従ってください。まず依頼者名、件名、日時、詳細を会話から収集してください。件名や詳細の内容から、会議、ミーティング、MTG、打ち合わせなど、オンライン会議であることが推測される場合は、会議のURL（ZoomやGoogle Meetのリンクなど）がまだ会話に出ていなければ、他の不足情報と同様にユーザーに尋ねてください。依頼者名、件名、日時、詳細のいずれかが不足または不明瞭な場合は、ユーザーに明確化の質問をしてください。これらの情報を合理的に収集できたら notify_owner_of_schedule_request ツールを呼び出してください。どうしても特定できないフィールドは依頼者名であれば「不明」、詳細であれば「詳細なし」として扱い、止めずに呼び出してください。URLは会話中に言及された場合のみ含めてください。このツールを呼び出した後、アシスタントはユーザーに対して「確認の通知を所有者に送信しました。所有者の返答があるまで予約は確定しません」と伝えてください。アシスタント自身はカレンダーイベントの承認や作成を行うことはできません。
+ユーザーのメッセージが特定の日時の予約、確保、または時間枠のリクエストを表明している場合、以下の手順に従ってください。まず依頼者名、連絡先（メールアドレス、電話番号、メッセージアプリのIDなど、所有者が返信できる手段）、件名、日時、詳細を会話から収集してください。件名や詳細の内容から、会議、ミーティング、MTG、打ち合わせなど、オンライン会議であることが推測される場合は、会議のURL（ZoomやGoogle Meetのリンクなど）がまだ会話に出ていなければ、他の不足情報と同様にユーザーに尋ねてください。依頼者名、連絡先、件名、日時、詳細のいずれかが不足または不明瞭な場合は、ユーザーに明確化の質問をしてください。これらの情報を合理的に収集できたら notify_owner_of_schedule_request ツールを呼び出してください。どうしても特定できないフィールドは依頼者名や連絡先であれば「不明」、詳細であれば「詳細なし」として扱い、止めずに呼び出してください。URLは会話中に言及された場合のみ含めてください。このツールを呼び出した後、アシスタントはユーザーに対して「確認の通知を所有者に送信しました。所有者の返答があるまで予約は確定しません」と伝えてください。アシスタント自身はカレンダーイベントの承認や作成を行うことはできません。
 
 get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（Notionの状況説明や雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
 
@@ -118,6 +118,10 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
                 type: "string",
                 description: "The name of the person requesting the schedule, as mentioned in the conversation, or the plain Japanese text 不明 if not mentioned.",
               },
+              contact: {
+                type: "string",
+                description: "A way for the owner to reach the requester back, such as an email address, phone number, or messaging app handle, as mentioned in the conversation, or the plain Japanese text 不明 if not mentioned.",
+              },
               eventTitle: {
                 type: "string",
                 description: "A short title or subject for the requested meeting or event.",
@@ -143,7 +147,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
                 description: "An optional related link such as a video call link or reference page, mentioned in the conversation. Omit this property entirely if no URL was mentioned.",
               },
             },
-            required: ["requesterName", "eventTitle", "datetime", "details"],
+            required: ["requesterName", "contact", "eventTitle", "datetime", "details"],
           },
         },
       },
@@ -229,6 +233,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
           const lines = [
             "新しい予約リクエスト",
             `依頼者: ${args.requesterName}`,
+            `連絡先: ${args.contact}`,
             `件名: ${args.eventTitle}`,
             `日時: ${args.datetime}`,
             `詳細: ${args.details}`,

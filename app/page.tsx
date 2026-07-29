@@ -265,6 +265,42 @@ export default function Home() {
     sendMessage(text)
   }
 
+  async function showUpcomingEvents() {
+    if (loading) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/upcoming')
+      const data = await res.json()
+      if (res.ok) {
+        setEntries((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: '直近の予定はこちらです。',
+            timestamp: new Date().toISOString(),
+            events: Array.isArray(data.events) ? data.events : undefined,
+          },
+        ])
+      } else {
+        setEntries((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: `エラーが発生しました${data.error ? `: ${data.error}` : ''}`,
+            timestamp: new Date().toISOString(),
+          },
+        ])
+      }
+    } catch {
+      setEntries((prev) => [
+        ...prev,
+        { role: 'assistant', text: 'エラーが発生しました', timestamp: new Date().toISOString() },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function applyTimePicker() {
     const phrase = buildDateTimePhrase(pickerDate, pickerStart, pickerEnd)
     if (!phrase) {
@@ -516,14 +552,19 @@ export default function Home() {
     return (
       <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-slate-950">
         <header className="sticky top-0 z-50 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
-            <h1 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-              今週の予定について
-            </h1>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              カレンダー連携中
-            </div>
+          <div className="mx-auto flex w-full max-w-3xl">
+            <button
+              type="button"
+              onClick={showUpcomingEvents}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+              直近の予定を見る
+            </button>
           </div>
         </header>
 
@@ -537,14 +578,19 @@ export default function Home() {
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-slate-950">
       <header className="sticky top-0 z-50 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-slate-950">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
-          <h1 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-            今週の予定について
-          </h1>
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            カレンダー連携中
-          </div>
+        <div className="mx-auto flex w-full max-w-3xl">
+          <button
+            type="button"
+            onClick={showUpcomingEvents}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            直近の予定を見る
+          </button>
         </div>
       </header>
 

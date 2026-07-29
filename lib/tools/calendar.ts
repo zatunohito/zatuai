@@ -10,7 +10,7 @@ interface GoogleCalendarApiItem {
   };
 }
 
-interface CalendarEvent {
+export interface CalendarEvent {
   summary: string;
   start: string;
   end: string;

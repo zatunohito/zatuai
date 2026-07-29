@@ -22,9 +22,15 @@ interface ChatEntry {
   choices?: string[]
 }
 
-type Panel = 'none' | 'time' | 'form'
+type Panel = 'none' | 'time' | 'form' | 'effort'
 
 const QUICK_REPLIES = ['今週は?', '明日は?', 'このあと空いてる?']
+
+const EFFORT_LEVELS: Array<{ label: string; value: 'none' | 'high' | 'max' }> = [
+  { label: '高速', value: 'none' },
+  { label: '高', value: 'high' },
+  { label: '最高', value: 'max' },
+]
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10)
@@ -133,6 +139,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [panel, setPanel] = useState<Panel>('none')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [effortIndex, setEffortIndex] = useState(2)
   const [pickerDate, setPickerDate] = useState(todayDateString)
   const [pickerStart, setPickerStart] = useState('')
   const [pickerEnd, setPickerEnd] = useState('')
@@ -154,6 +161,19 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom()
   }, [entries, scrollToBottom])
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('effortIndex')
+    if (saved !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of persisted preference on mount
+      setEffortIndex(Number(saved))
+    }
+  }, [])
+
+  function handleEffortChange(index: number) {
+    setEffortIndex(index)
+    window.localStorage.setItem('effortIndex', String(index))
+  }
 
   useEffect(() => {
     const viewport = window.visualViewport
@@ -205,6 +225,7 @@ export default function Home() {
             role: entry.role,
             content: entry.text,
           })),
+          effort: EFFORT_LEVELS[effortIndex].value,
         }),
       })
       const data = await res.json()
@@ -360,6 +381,48 @@ export default function Home() {
               {reply}
             </button>
           ))}
+        </div>
+      )}
+
+      {panel === 'effort' && (
+        <div className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-4 text-sm text-zinc-700 dark:text-slate-200">
+            エフォート <span className="font-semibold">{EFFORT_LEVELS[effortIndex].label}</span>
+          </div>
+          <div className="relative flex h-5 items-center">
+            <div className="pointer-events-none absolute inset-x-0 h-1.5 rounded-full bg-zinc-200 dark:bg-slate-700" />
+            <div
+              className="pointer-events-none absolute h-1.5 rounded-full bg-gradient-to-r from-violet-300 to-violet-600 transition-all duration-200"
+              style={{ width: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+            />
+            <div className="pointer-events-none absolute inset-x-0 flex justify-between px-0.5">
+              {EFFORT_LEVELS.map((level, levelIndex) => (
+                <span
+                  key={level.value}
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    levelIndex <= effortIndex ? 'bg-violet-200' : 'bg-zinc-400 dark:bg-slate-500'
+                  }`}
+                />
+              ))}
+            </div>
+            <div
+              className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 rounded-full bg-white shadow ring-1 ring-zinc-300 transition-all duration-200 dark:ring-slate-500"
+              style={{ left: `${(effortIndex / (EFFORT_LEVELS.length - 1)) * 100}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={EFFORT_LEVELS.length - 1}
+              step={1}
+              value={effortIndex}
+              onChange={(e) => handleEffortChange(Number(e.target.value))}
+              className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-transparent"
+            />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-zinc-400 dark:text-slate-500">
+            <span>高速</span>
+            <span>高精度</span>
+          </div>
         </div>
       )}
 
@@ -534,6 +597,13 @@ export default function Home() {
                 className="px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-100 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 予約フォーム
+              </button>
+              <button
+                type="button"
+                onClick={() => togglePanel('effort')}
+                className="px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-100 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                エフォート
               </button>
             </div>
           )}

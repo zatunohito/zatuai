@@ -35,13 +35,18 @@ function buildGoogleCalendarLink(
 
 export async function POST(request: Request) {
   try {
-    let body: { messages?: Array<{ role: "user" | "assistant"; content: string }> };
+    let body: {
+      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+      effort?: string;
+    };
     try {
       body = await request.json();
     } catch {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
     const { messages: incomingMessages } = body;
+    const reasoningEffort: "high" | "max" | undefined =
+      body.effort === "high" || body.effort === "max" ? body.effort : undefined;
     if (
       !incomingMessages ||
       !Array.isArray(incomingMessages) ||
@@ -258,7 +263,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
 
     const initialResponse = await deepseekChatCompletion({
       model: "deepseek-v4-flash",
-      reasoningEffort: "max",
+      reasoningEffort,
       messages,
       tools,
     });
@@ -344,7 +349,7 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
 
       const nextResponse = await deepseekChatCompletion({
         model: "deepseek-v4-flash",
-        reasoningEffort: "max",
+        reasoningEffort,
         messages,
         tools,
       });

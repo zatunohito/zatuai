@@ -21,19 +21,43 @@ function categorize(title: string): string {
   return "予定";
 }
 
+const JST_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Tokyo",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function jstParts(date: Date) {
+  const parts = Object.fromEntries(
+    JST_PARTS.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday);
+  return {
+    month: parts.month,
+    day: parts.day,
+    weekdayKanji: WEEKDAY_KANJI[weekdayIndex],
+    hour: parts.hour === "24" ? "00" : parts.hour,
+    minute: parts.minute,
+  };
+}
+
 function formatDayAndTime(startIso: string, endIso: string): { day: string; time: string } {
   const hasTime = startIso.includes("T");
-  const start = new Date(startIso);
+  const start = jstParts(new Date(startIso));
 
   if (!hasTime) {
-    return { day: `${start.getMonth() + 1}/${start.getDate()}`, time: "終日" };
+    return { day: `${start.month}/${start.day}`, time: "終日" };
   }
 
-  const end = new Date(endIso);
-  const day = WEEKDAY_KANJI[start.getDay()];
-  const formatTime = (d: Date) =>
-    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return { day, time: `${formatTime(start)}〜${formatTime(end)}` };
+  const end = jstParts(new Date(endIso));
+  return {
+    day: start.weekdayKanji,
+    time: `${start.hour}:${start.minute}〜${end.hour}:${end.minute}`,
+  };
 }
 
 export async function GET() {

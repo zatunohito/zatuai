@@ -30,7 +30,8 @@ export async function getNotionStatus(): Promise<NotionStatus> {
 
     if (!pageRes.ok) {
       const body = await pageRes.text();
-      throw new Error(`Page fetch failed with status ${pageRes.status}: ${body}`);
+      console.error(`Notion page fetch failed with status ${pageRes.status}: ${body}`);
+      throw new Error("Notion page fetch failed");
     }
 
     const page = await pageRes.json();
@@ -51,7 +52,8 @@ export async function getNotionStatus(): Promise<NotionStatus> {
 
     if (!blocksRes.ok) {
       const body = await blocksRes.text();
-      throw new Error(`Blocks fetch failed with status ${blocksRes.status}: ${body}`);
+      console.error(`Notion blocks fetch failed with status ${blocksRes.status}: ${body}`);
+      throw new Error("Notion blocks fetch failed");
     }
 
     const blocks = await blocksRes.json();

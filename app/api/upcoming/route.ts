@@ -1,4 +1,5 @@
 import { getCalendarEvents, type CalendarEvent } from "../../../lib/tools/calendar";
+import { checkChatRateLimit } from "../../../lib/rateLimit";
 
 const WEEKDAY_KANJI = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -60,8 +61,12 @@ function formatDayAndTime(startIso: string, endIso: string): { day: string; time
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    if (!checkChatRateLimit(request)) {
+      return Response.json({ error: "リクエストが多すぎます。しばらくしてから再度お試しください。" }, { status: 429 });
+    }
+
     const now = new Date();
     const end = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
@@ -84,7 +89,6 @@ export async function GET() {
     return Response.json({ events: upcoming }, { status: 200 });
   } catch (error) {
     console.error(error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return Response.json({ error: errorMessage }, { status: 500 });
+    return Response.json({ error: "内部エラーが発生しました" }, { status: 500 });
   }
 }

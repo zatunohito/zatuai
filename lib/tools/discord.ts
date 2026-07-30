@@ -23,9 +23,10 @@ export async function sendDiscordDm(message: string): Promise<void> {
 
   if (!channelRes.ok) {
     const text = await channelRes.text()
-    throw new Error(
-      `Failed to create DM channel: HTTP ${channelRes.status} ${channelRes.statusText} - ${text}`,
+    console.error(
+      `Failed to create Discord DM channel: HTTP ${channelRes.status} ${channelRes.statusText} - ${text}`,
     )
+    throw new Error('Failed to create Discord DM channel')
   }
 
   const { id: channelId } = (await channelRes.json()) as { id: string }
@@ -44,8 +45,9 @@ export async function sendDiscordDm(message: string): Promise<void> {
 
   if (!messageRes.ok) {
     const text = await messageRes.text()
-    throw new Error(
-      `Failed to send DM: HTTP ${messageRes.status} ${messageRes.statusText} - ${text}`,
+    console.error(
+      `Failed to send Discord DM: HTTP ${messageRes.status} ${messageRes.statusText} - ${text}`,
     )
+    throw new Error('Failed to send Discord DM')
   }
 }

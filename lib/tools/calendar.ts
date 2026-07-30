@@ -37,7 +37,8 @@ async function getAccessToken(): Promise<string> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to obtain access token: ${response.status} ${text}`);
+    console.error(`Failed to obtain access token: ${response.status} ${text}`);
+    throw new Error("Failed to obtain access token");
   }
 
   const data = await response.json();
@@ -52,13 +53,29 @@ function toRfc3339(value: string, label: string): string {
   return parsed.toISOString();
 }
 
+// Public callers (the LLM tool and the anonymous /api/upcoming endpoint) must
+// not be able to pull arbitrary past or far-future ranges, so the window is
+// clamped server-side regardless of what was requested.
+const MAX_RANGE_PAST_MS = 24 * 60 * 60 * 1000; // 1 day
+const MAX_RANGE_FUTURE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 export async function getCalendarEvents(start: string, end: string): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
   const calendarId = process.env.GOOGLE_CALENDAR_ID ?? "primary";
 
+  const now = Date.now();
+  const earliestAllowed = new Date(now - MAX_RANGE_PAST_MS);
+  const latestAllowed = new Date(now + MAX_RANGE_FUTURE_MS);
+
+  const requestedStart = new Date(toRfc3339(start, "start"));
+  const requestedEnd = new Date(toRfc3339(end, "end"));
+
+  const clampedStart = requestedStart < earliestAllowed ? earliestAllowed : requestedStart;
+  const clampedEnd = requestedEnd > latestAllowed ? latestAllowed : requestedEnd;
+
   const params = new URLSearchParams();
-  params.append("timeMin", toRfc3339(start, "start"));
-  params.append("timeMax", toRfc3339(end, "end"));
+  params.append("timeMin", clampedStart.toISOString());
+  params.append("timeMax", clampedEnd.toISOString());
   params.append("singleEvents", "true");
   params.append("orderBy", "startTime");
 
@@ -70,7 +87,8 @@ export async function getCalendarEvents(start: string, end: string): Promise<Cal
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to fetch calendar events: ${response.status} ${text}`);
+    console.error(`Failed to fetch calendar events: ${response.status} ${text}`);
+    throw new Error("Failed to fetch calendar events");
   }
 
   const data = await response.json();

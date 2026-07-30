@@ -22,7 +22,16 @@ const PUBLIC_MARKER_RE = /\(公開\)|（公開）/;
 
 const MASKED_SUMMARY = "予定あり";
 
+// Cached across warm invocations of this serverless function so repeated
+// calendar requests don't each pay for a full OAuth refresh round-trip.
+// Google access tokens are valid for about an hour; refreshed 60s early.
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
+
 async function getAccessToken(): Promise<string> {
+  if (cachedAccessToken && Date.now() < cachedAccessToken.expiresAt) {
+    return cachedAccessToken.token;
+  }
+
   const body = new URLSearchParams();
   body.append("client_id", process.env.GOOGLE_CLIENT_ID ?? "");
   body.append("client_secret", process.env.GOOGLE_CLIENT_SECRET ?? "");
@@ -42,7 +51,11 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data = await response.json();
-  return data.access_token;
+  cachedAccessToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60_000,
+  };
+  return cachedAccessToken.token;
 }
 
 function toRfc3339(value: string, label: string): string {

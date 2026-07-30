@@ -138,6 +138,7 @@ export default function Home() {
   const [entries, setEntries] = useState<ChatEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [streamingText, setStreamingText] = useState('')
   const [choiceFocusIndex, setChoiceFocusIndex] = useState(0)
   const [choicesHidden, setChoicesHidden] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -247,6 +248,7 @@ export default function Home() {
     requestStartedAtRef.current = Date.now()
     setElapsed(0)
     setStatus(null)
+    setStreamingText('')
     setLoading(true)
 
     try {
@@ -304,6 +306,8 @@ export default function Home() {
           const event = JSON.parse(line.slice(5).trim())
           if (event.type === 'status') {
             setStatus(event.label)
+          } else if (event.type === 'partial') {
+            setStreamingText((prev) => prev + event.delta)
           } else if (event.type === 'done') {
             done = event
           } else if (event.type === 'error') {
@@ -341,6 +345,7 @@ export default function Home() {
     } finally {
       setLoading(false)
       setStatus(null)
+      setStreamingText('')
     }
   }, [loading, entries, effortIndex, auditEnabled])
 
@@ -1048,17 +1053,26 @@ export default function Home() {
               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
                 AI
               </div>
-              <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-800 dark:ring-slate-700">
-                <span className="h-3.5 w-3.5 flex-shrink-0 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
-                <span
-                  key={status}
-                  className="animate-[fadeIn_200ms_ease-out] text-sm text-zinc-700 dark:text-slate-200"
-                >
-                  {status ?? '考えています'}
-                </span>
-                <span className="text-xs tabular-nums text-zinc-400 dark:text-slate-500">
-                  {elapsed}秒
-                </span>
+              <div className="max-w-[85%] rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-800 dark:ring-slate-700 sm:max-w-[80%]">
+                {streamingText && (
+                  <div className="text-sm leading-relaxed text-zinc-800 dark:text-slate-100">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {streamingText}
+                    </ReactMarkdown>
+                  </div>
+                )}
+                <div className={`flex items-center gap-2 ${streamingText ? 'mt-2' : ''}`}>
+                  <span className="h-3.5 w-3.5 flex-shrink-0 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                  <span
+                    key={status}
+                    className="animate-[fadeIn_200ms_ease-out] text-sm text-zinc-700 dark:text-slate-200"
+                  >
+                    {status ?? '考えています'}
+                  </span>
+                  <span className="text-xs tabular-nums text-zinc-400 dark:text-slate-500">
+                    {elapsed}秒
+                  </span>
+                </div>
               </div>
             </div>
           )}

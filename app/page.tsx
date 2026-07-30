@@ -358,16 +358,34 @@ export default function Home() {
     setChoicesHidden(false)
   }, [entries.length])
 
-  // Keyboard navigation for the choice card: arrow keys move the highlighted
-  // row, Enter sends it, digits jump straight to an option, Escape dismisses.
-  // Ignored while the user is typing in a text field so free replies still work.
+  // Keyboard navigation for the choice card: arrow keys and mouse hover both
+  // move the highlighted row (via choiceFocusIndex), Enter sends it, digits
+  // jump straight to an option, Escape dismisses. Arrow/digit/Escape are
+  // ignored while typing in a text field; Enter is only ignored if that field
+  // actually has text in it, so hovering a choice with an empty, focused
+  // textarea still lets Enter send the hovered option.
   useEffect(() => {
     if (!activeChoices) return
 
     function handleKeyDown(e: globalThis.KeyboardEvent) {
-      const target = e.target as HTMLElement
-      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return
       if (!activeChoices) return
+      const target = e.target as HTMLElement
+      const isTextField = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT'
+
+      if (e.key === 'Enter') {
+        // The textarea normally owns Enter (send the typed reply), so only
+        // hand it back here if there is nothing typed — e.g. the user is
+        // just hovering a choice with the mouse while the (empty) textarea
+        // still happens to hold focus. If they typed something, let their
+        // own onKeyDown submit that text instead of hijacking it.
+        const typedValue = isTextField ? (target as HTMLTextAreaElement | HTMLInputElement).value : ''
+        if (typedValue.trim() !== '') return
+        e.preventDefault()
+        sendMessage(activeChoices[choiceFocusIndex])
+        return
+      }
+
+      if (isTextField) return
 
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -375,9 +393,6 @@ export default function Home() {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setChoiceFocusIndex((prev) => (prev - 1 + activeChoices.length) % activeChoices.length)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        sendMessage(activeChoices[choiceFocusIndex])
       } else if (e.key === 'Escape') {
         setChoicesHidden(true)
       } else if (/^[1-9]$/.test(e.key)) {
@@ -985,7 +1000,12 @@ export default function Home() {
                               <div className="flex items-center justify-between border-t border-zinc-100 px-3 py-2 dark:border-slate-700">
                                 <button
                                   type="button"
-                                  onClick={() => textareaRef.current?.focus()}
+                                  onClick={() => {
+                                    // Dismiss the card so it's unmistakable that something
+                                    // happened, then hand focus to the free-text input.
+                                    setChoicesHidden(true)
+                                    textareaRef.current?.focus()
+                                  }}
                                   className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-700 dark:text-slate-400 dark:hover:text-slate-200"
                                 >
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

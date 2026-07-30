@@ -138,6 +138,8 @@ export default function Home() {
   const [entries, setEntries] = useState<ChatEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [choiceFocusIndex, setChoiceFocusIndex] = useState(0)
+  const [choicesHidden, setChoicesHidden] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [panel, setPanel] = useState<Panel>('none')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -234,7 +236,7 @@ export default function Home() {
     adjustTextareaHeight()
   }, [input, adjustTextareaHeight])
 
-  async function sendMessage(messageText: string) {
+  const sendMessage = useCallback(async (messageText: string) => {
     if (loading || messageText.trim().length === 0) return
 
     const updatedEntries: ChatEntry[] = [
@@ -340,7 +342,56 @@ export default function Home() {
       setLoading(false)
       setStatus(null)
     }
-  }
+  }, [loading, entries, effortIndex, auditEnabled])
+
+  const lastEntry = entries[entries.length - 1]
+  const activeChoices =
+    !choicesHidden && lastEntry?.role === 'assistant' && lastEntry.choices && lastEntry.choices.length > 0
+      ? lastEntry.choices
+      : null
+
+  // Resets the choice card whenever a new message arrives, since choices only
+  // ever apply to the latest assistant entry.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reset when a new message (and possibly new choices) arrives
+    setChoiceFocusIndex(0)
+    setChoicesHidden(false)
+  }, [entries.length])
+
+  // Keyboard navigation for the choice card: arrow keys move the highlighted
+  // row, Enter sends it, digits jump straight to an option, Escape dismisses.
+  // Ignored while the user is typing in a text field so free replies still work.
+  useEffect(() => {
+    if (!activeChoices) return
+
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return
+      if (!activeChoices) return
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setChoiceFocusIndex((prev) => (prev + 1) % activeChoices.length)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setChoiceFocusIndex((prev) => (prev - 1 + activeChoices.length) % activeChoices.length)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        sendMessage(activeChoices[choiceFocusIndex])
+      } else if (e.key === 'Escape') {
+        setChoicesHidden(true)
+      } else if (/^[1-9]$/.test(e.key)) {
+        const idx = Number(e.key) - 1
+        if (idx < activeChoices.length) {
+          e.preventDefault()
+          sendMessage(activeChoices[idx])
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeChoices, choiceFocusIndex, sendMessage])
 
   function send() {
     if (loading || trimmed.length === 0) return
@@ -887,20 +938,76 @@ export default function Home() {
                           ))}
                         </div>
                       )}
-                      {entry.choices && entry.choices.length > 0 && i === entries.length - 1 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {entry.choices.map((choice, choiceIndex) => (
-                            <button
-                              key={choiceIndex}
-                              type="button"
-                              onClick={() => sendMessage(choice)}
-                              disabled={loading}
-                              className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                            >
-                              {choice}
-                            </button>
-                          ))}
-                        </div>
+                      {entry.choices && entry.choices.length > 0 && i === entries.length - 1 && !choicesHidden && (
+                        <>
+                          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900">
+                            <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2 dark:border-slate-700">
+                              <span className="text-xs font-medium text-zinc-500 dark:text-slate-400">
+                                選択してください
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setChoicesHidden(true)}
+                                aria-label="閉じる"
+                                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M18 6 6 18M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                            <div>
+                              {entry.choices.map((choice, choiceIndex) => (
+                                <button
+                                  key={choiceIndex}
+                                  type="button"
+                                  onClick={() => sendMessage(choice)}
+                                  onMouseEnter={() => setChoiceFocusIndex(choiceIndex)}
+                                  disabled={loading}
+                                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                    choiceFocusIndex === choiceIndex
+                                      ? 'bg-zinc-100 dark:bg-slate-700'
+                                      : 'hover:bg-zinc-50 dark:hover:bg-slate-800'
+                                  }`}
+                                >
+                                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border border-zinc-300 text-[11px] text-zinc-500 dark:border-slate-600 dark:text-slate-400">
+                                    {choiceIndex + 1}
+                                  </span>
+                                  <span className="flex-1 text-zinc-800 dark:text-slate-100">{choice}</span>
+                                  {choiceFocusIndex === choiceIndex && (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-zinc-400 dark:text-slate-500">
+                                      <path d="M9 10l-4 4 4 4" />
+                                      <path d="M20 4v7a4 4 0 0 1-4 4H5" />
+                                    </svg>
+                                  )}
+                                </button>
+                              ))}
+                              <div className="flex items-center justify-between border-t border-zinc-100 px-3 py-2 dark:border-slate-700">
+                                <button
+                                  type="button"
+                                  onClick={() => textareaRef.current?.focus()}
+                                  className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-700 dark:text-slate-400 dark:hover:text-slate-200"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                  </svg>
+                                  その他
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setChoicesHidden(true)}
+                                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                                >
+                                  スキップ
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="mt-1.5 text-center text-[11px] text-zinc-400 dark:text-slate-500">
+                            ↑↓で移動 ・ Enterで選択 ・ 数字キーでも選択可
+                          </p>
+                        </>
                       )}
                     </>
                   ) : (

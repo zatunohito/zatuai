@@ -1,5 +1,4 @@
 import { getCalendarEvents } from "../../../lib/tools/calendar";
-import { getNotionStatus } from "../../../lib/tools/notion";
 import { sendDiscordDm } from "../../../lib/tools/discord";
 import {
   deepseekChatCompletion,
@@ -16,7 +15,6 @@ const MAX_NOTIFICATIONS_PER_REQUEST = 3;
 // Shown to the user while the corresponding tool call is running.
 const TOOL_STATUS_LABELS: Record<string, string> = {
   get_calendar_events: "カレンダーを確認しています",
-  get_notion_status: "タスク状況を確認しています",
   notify_owner_of_schedule_request: "予約リクエストを送信しています",
   notify_owner_of_inquiry: "問い合わせを送信しています",
   present_calendar_events: "予定をまとめています",
@@ -157,7 +155,6 @@ async function runAgent(params: {
 
   const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。以下のツールを使って回答してください。
 - get_calendar_events: カレンダーイベント取得
-- get_notion_status: Notionステータス取得
 - present_calendar_events: 予定を列挙する回答は必ずこれで提示
 - notify_owner_of_schedule_request: 予約・時間枠リクエストを所有者にDiscordで通知
 - notify_owner_of_inquiry: 一般的な問い合わせを所有者にDiscordで通知
@@ -194,18 +191,6 @@ async function runAgent(params: {
             },
           },
           required: ["start", "end"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_notion_status",
-        description: "Fetches the status content of a fixed Notion page.",
-        parameters: {
-          type: "object",
-          properties: {},
-          required: [],
         },
       },
     },
@@ -386,8 +371,6 @@ async function runAgent(params: {
 
       if (toolCall.function.name === "get_calendar_events") {
         result = await getCalendarEvents(args.start, args.end);
-      } else if (toolCall.function.name === "get_notion_status") {
-        result = await getNotionStatus();
       } else if (toolCall.function.name === "notify_owner_of_schedule_request") {
         if (notificationsSent >= MAX_NOTIFICATIONS_PER_REQUEST || !checkNotifyRateLimit(request)) {
           result = { error: "notification limit reached" };

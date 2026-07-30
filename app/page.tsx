@@ -137,9 +137,12 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [entries, setEntries] = useState<ChatEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+  const [elapsed, setElapsed] = useState(0)
   const [panel, setPanel] = useState<Panel>('none')
   const [menuOpen, setMenuOpen] = useState(false)
   const [effortIndex, setEffortIndex] = useState(2)
+  const [auditEnabled, setAuditEnabled] = useState(false)
   const [pickerDate, setPickerDate] = useState(todayDateString)
   const [pickerStart, setPickerStart] = useState('')
   const [pickerEnd, setPickerEnd] = useState('')
@@ -153,6 +156,7 @@ export default function Home() {
   const [formEnd, setFormEnd] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const requestStartedAtRef = useRef(0)
 
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
@@ -161,6 +165,17 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom()
   }, [entries, scrollToBottom])
+
+  // Ticks the elapsed-seconds counter shown next to the live status label. The
+  // origin lives in a ref, set once when the request starts, so the counter
+  // stays monotonic even if this effect is torn down and re-created mid-request.
+  useEffect(() => {
+    if (!loading) return
+    const id = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - requestStartedAtRef.current) / 1000))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [loading])
 
   useEffect(() => {
     const saved = window.localStorage.getItem('effortIndex')
@@ -173,6 +188,19 @@ export default function Home() {
   function handleEffortChange(index: number) {
     setEffortIndex(index)
     window.localStorage.setItem('effortIndex', String(index))
+  }
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('auditEnabled')
+    if (saved !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of persisted preference on mount
+      setAuditEnabled(saved === 'true')
+    }
+  }, [])
+
+  function handleAuditChange(value: boolean) {
+    setAuditEnabled(value)
+    window.localStorage.setItem('auditEnabled', String(value))
   }
 
   useEffect(() => {
@@ -214,6 +242,9 @@ export default function Home() {
       { role: 'user', text: messageText, timestamp: new Date().toISOString() },
     ]
     setEntries(updatedEntries)
+    requestStartedAtRef.current = Date.now()
+    setElapsed(0)
+    setStatus(null)
     setLoading(true)
 
     try {
@@ -226,19 +257,66 @@ export default function Home() {
             content: entry.text,
           })),
           effort: EFFORT_LEVELS[effortIndex].value,
+          audit: auditEnabled,
         }),
       })
-      const data = await res.json()
 
-      if (res.ok) {
+      // Errors before the stream starts (rate limit, validation) come back as
+      // plain JSON rather than as server-sent events.
+      if (!res.ok || !res.body) {
+        let detail = ''
+        try {
+          const data = await res.json()
+          if (data.error) detail = `: ${data.error}`
+        } catch {
+          // keep the generic message
+        }
         setEntries((prev) => [
           ...prev,
           {
             role: 'assistant',
-            text: data.answer,
+            text: `エラーが発生しました${detail}`,
             timestamp: new Date().toISOString(),
-            events: Array.isArray(data.events) ? data.events : undefined,
-            choices: Array.isArray(data.choices) ? data.choices : undefined,
+          },
+        ])
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let done: { answer?: string; events?: EventCard[]; choices?: string[] } | null = null
+      let streamError: string | null = null
+
+      for (;;) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        buffer += decoder.decode(chunk.value, { stream: true })
+
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+
+        for (const part of parts) {
+          const line = part.trim()
+          if (!line.startsWith('data:')) continue
+          const event = JSON.parse(line.slice(5).trim())
+          if (event.type === 'status') {
+            setStatus(event.label)
+          } else if (event.type === 'done') {
+            done = event
+          } else if (event.type === 'error') {
+            streamError = event.error
+          }
+        }
+      }
+
+      if (streamError) {
+        setEntries((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: `エラーが発生しました: ${streamError}`,
+            timestamp: new Date().toISOString(),
           },
         ])
       } else {
@@ -246,8 +324,10 @@ export default function Home() {
           ...prev,
           {
             role: 'assistant',
-            text: `エラーが発生しました${data.error ? `: ${data.error}` : ''}`,
+            text: done?.answer ?? '',
             timestamp: new Date().toISOString(),
+            events: Array.isArray(done?.events) ? done.events : undefined,
+            choices: Array.isArray(done?.choices) ? done.choices : undefined,
           },
         ])
       }
@@ -258,6 +338,7 @@ export default function Home() {
       ])
     } finally {
       setLoading(false)
+      setStatus(null)
     }
   }
 
@@ -436,6 +517,53 @@ export default function Home() {
       <span className="w-8 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-slate-500">
         {EFFORT_LEVELS[effortIndex].label}
       </span>
+    </div>
+  )
+
+  const auditToggleBig = (
+    <div className="mb-3 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="text-sm text-zinc-700 dark:text-slate-200">
+        回答監査
+        <span className="ml-2 text-xs text-zinc-400 dark:text-slate-500">別のAIが回答をチェックします</span>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={auditEnabled}
+        aria-label="回答監査"
+        onClick={() => handleAuditChange(!auditEnabled)}
+        className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ${
+          auditEnabled ? 'bg-violet-500' : 'bg-zinc-300 dark:bg-slate-600'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+            auditEnabled ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  )
+
+  const auditToggleSmall = (
+    <div className="mt-2 flex items-center gap-2">
+      <span className="flex-shrink-0 text-xs text-zinc-400 dark:text-slate-500">回答監査</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={auditEnabled}
+        aria-label="回答監査"
+        onClick={() => handleAuditChange(!auditEnabled)}
+        className={`relative h-4 w-8 flex-shrink-0 rounded-full transition-colors duration-200 ${
+          auditEnabled ? 'bg-violet-500' : 'bg-zinc-300 dark:bg-slate-600'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 ${
+            auditEnabled ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
     </div>
   )
 
@@ -680,6 +808,7 @@ export default function Home() {
         <div className="flex flex-1 items-center justify-center px-4">
           <div className="w-full max-w-xl">
             {effortPanelBig}
+            {auditToggleBig}
             {composer}
           </div>
         </div>
@@ -792,10 +921,17 @@ export default function Home() {
               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
                 AI
               </div>
-              <div className="flex items-center gap-1 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-800 dark:ring-slate-700">
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-slate-400 [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-slate-400 [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-slate-400 [animation-delay:300ms]" />
+              <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-800 dark:ring-slate-700">
+                <span className="h-3.5 w-3.5 flex-shrink-0 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                <span
+                  key={status}
+                  className="animate-[fadeIn_200ms_ease-out] text-sm text-zinc-700 dark:text-slate-200"
+                >
+                  {status ?? '考えています'}
+                </span>
+                <span className="text-xs tabular-nums text-zinc-400 dark:text-slate-500">
+                  {elapsed}秒
+                </span>
               </div>
             </div>
           )}
@@ -806,6 +942,7 @@ export default function Home() {
         <div className="mx-auto w-full max-w-3xl">
           {composer}
           {effortBarSmall}
+          {auditToggleSmall}
         </div>
       </div>
     </div>

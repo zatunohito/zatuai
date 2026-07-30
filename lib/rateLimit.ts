@@ -52,9 +52,14 @@ const GLOBAL_WINDOW_MS = 24 * 60 * 60 * 1000; // 1 day
 
 export function checkChatRateLimit(request: Request): boolean {
   const ip = getClientIp(request);
-  const perIpOk = checkLimit(`chat:ip:${ip}`, PER_IP_LIMIT, PER_IP_WINDOW_MS);
-  const globalOk = checkLimit("chat:global", GLOBAL_LIMIT, GLOBAL_WINDOW_MS);
-  return perIpOk && globalOk;
+  // Check the per-IP limit first and bail out before touching the global
+  // counter: checkLimit has a side effect (it increments the bucket), so
+  // evaluating both unconditionally would let a client stuck on its own
+  // per-IP limit keep draining the shared global budget for everyone else.
+  if (!checkLimit(`chat:ip:${ip}`, PER_IP_LIMIT, PER_IP_WINDOW_MS)) {
+    return false;
+  }
+  return checkLimit("chat:global", GLOBAL_LIMIT, GLOBAL_WINDOW_MS);
 }
 
 const NOTIFY_PER_IP_LIMIT = 5;

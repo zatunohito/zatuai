@@ -1,4 +1,5 @@
 import { getCalendarEvents } from "../../../lib/tools/calendar";
+import { getNotionStatus } from "../../../lib/tools/notion";
 import { sendDiscordDm } from "../../../lib/tools/discord";
 import {
   deepseekChatCompletion,
@@ -59,9 +60,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
     const { messages: incomingMessages } = body;
-    // The reasoning effort is a cost lever; the public endpoint always uses the
-    // server default regardless of what the client requests.
-    const reasoningEffort: "high" | "max" | undefined = undefined;
+    const reasoningEffort: "high" | "max" | undefined =
+      body.effort === "high" || body.effort === "max" ? body.effort : undefined;
     if (
       !incomingMessages ||
       !Array.isArray(incomingMessages) ||
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
 
     const systemPrompt = `あなたはスケジュール管理とタスク状況のアシスタントです。ユーザーからの質問に対して、以下のツールを利用して回答してください。
 - get_calendar_events: 指定された日付範囲のカレンダーイベントを取得します。
+- get_notion_status: Notionページのステータス内容を取得します。
 - notify_owner_of_schedule_request: 依頼者名、連絡先、件名、日時（表示用の文章と、可能であればISO 8601形式の開始/終了日時）、詳細、オプションのURLを収集し、誰かが時間枠を予約・確保したい場合に、カレンダーの所有者へDiscord経由で通知を送信します。ISO形式の開始/終了日時が分かる場合は、Googleカレンダーに1クリックで追加できるリンクを自動生成して通知に含めます。
 - present_calendar_events: 具体的なカレンダーイベントの一覧を回答として提示する際に、自由文の代わりに必ずこのツールを呼び出してください。
 - notify_owner_of_inquiry: 予約や時間枠のリクエストではない、一般的な質問や問い合わせを所有者宛てに正確にまとめ、返信先メールアドレスとともにDiscord経由で通知します。
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
 
 ユーザーに質問をする際、想定される答えが少数（2〜5個程度）で明確に列挙できる場合は、自由文で尋ねる代わりに present_choices ツールを必ず呼び出して、質問文と選択肢のボタンを提示してください。例えば、はい・いいえで答えられる質問、オンラインか対面かのような二択、既知の少数の選択肢から選んでもらう質問、そしてユーザーの用件が予約リクエストなのか一般的な問い合わせなのか雑談なのか判断がつかない場合の切り分け質問（例えば選択肢を予約のリクエスト、一般的な質問や問い合わせ、その他とする）などが該当します。用件の種類を尋ねる場面では、絶対に自由文で聞かず必ずこのツールを使ってください。選択肢は簡潔な日本語のラベルにしてください。答えが自由記述でなければ答えられないもの（名前、日時、詳細な文章など）には使わないでください。
 
-get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
+get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して回答する場合は、必ずpresent_calendar_eventsツールを呼び出してください。summaryには短い会話的な一言コメントを、eventsには各予定について曜日または日付、時刻、件名、そして内容から推測した短い日本語のカテゴリタグ（勉強、部活、自習、外出、通院、会議、予定など）を入れてください。予定が0件の場合や、予定一覧以外の回答（Notionの状況説明や雑談、確認の質問など）ではこのツールは使わず、通常通り文章で回答してください。
 
 現在の日時: ${nowIso}`;
 
@@ -130,6 +131,18 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
               },
             },
             required: ["start", "end"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_notion_status",
+          description: "Fetches the status content of a fixed Notion page.",
+          parameters: {
+            type: "object",
+            properties: {},
+            required: [],
           },
         },
       },
@@ -306,6 +319,8 @@ get_calendar_eventsの結果を元に具体的な予定を1件以上列挙して
 
         if (toolCall.function.name === "get_calendar_events") {
           result = await getCalendarEvents(args.start, args.end);
+        } else if (toolCall.function.name === "get_notion_status") {
+          result = await getNotionStatus();
         } else if (toolCall.function.name === "notify_owner_of_schedule_request") {
           if (notificationsSent >= MAX_NOTIFICATIONS_PER_REQUEST || !checkNotifyRateLimit(request)) {
             result = { error: "notification limit reached" };

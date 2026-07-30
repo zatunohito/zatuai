@@ -24,7 +24,7 @@ export type DeepSeekMessage = {
 
 // Caps a single completion call so a stalled upstream request fails with a
 // clear error instead of leaving the user staring at a spinner indefinitely.
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 export async function deepseekChatCompletion(params: {
   model: string;
